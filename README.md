@@ -4,6 +4,6 @@ COMPATIBLE WITH:
 Linux
 I see no reason it wouldn't compile on Mac and BSD, but you might have to change some
 
-**V1.1: The Graphics Update mk.1**
+**v1.1: The Graphics Update mk.1**
 - Added an outer barrier to the game-area
 - Centered the game window
