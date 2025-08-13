@@ -180,20 +180,18 @@ struct Engine {
       default:
       break;
 
-      case 'w':
-        key = 0;
+      case 'a':
+        key = key - 1;
+        if (key == -1) {
+          key = 3;
+        }
       break;
       
       case 'd':
-        key = 1;
-      break;
-      
-      case 's':
-        key = 2;
-      break;
-      
-      case 'a':
-        key = 3;
+        key = key + 1;
+        if (key == 4) {
+          key = 0;
+        }
       break;
     }
     

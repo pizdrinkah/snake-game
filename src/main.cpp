@@ -5,9 +5,14 @@
 #include <thread>
 #include <unistd.h>
 
+#define snkmove(pos) move(pos.y + height, pos.x + width)
+
 using namespace std;
 
 int main(int argc, char* argv[]) {
+  int width;
+  int height;
+  
   int wait;
   
   switch (argv[1][0]) {
@@ -47,6 +52,11 @@ int main(int argc, char* argv[]) {
   
   srand(time(0));
   init();
+  getmaxyx(stdscr, height, width);
+  
+  height = (height / 2) - 8 ;
+  width  = (width  / 2) - 12;
+
   snake jake;
   apple jeff;
   Engine engine;
@@ -60,15 +70,30 @@ int main(int argc, char* argv[]) {
 
     clear();
     start_color();
+    
+    for (int y = -1; y <= 16; y++) {
+        for (int x = -1; x <= 24; x++) {
+            // Draw borders only
+            if (y == -1 || y == 16 || x == -1 || x == 24) {
+              ncvec pos;
+              pos.x = x;
+              pos.y = y;
+              snkmove(pos);
+              printw("#");
+            }
+        }
+    }
+
+    
     while (current != nullptr) {
-      move(current->data->y, current->data->x);
+      snkmove((*current->data));
       attron(COLOR_PAIR(colornum(COLOR_GREEN, COLOR_BLACK)));
       printw("#");
       attroff(COLOR_PAIR(colornum(COLOR_GREEN, COLOR_BLACK)));
       current = current->next;
     }
     
-    move(jeff.pos.y, jeff.pos.x);
+    snkmove(jeff.pos);
     attron(COLOR_PAIR(colornum(COLOR_RED, COLOR_BLACK)));
     printw("O");
     attroff(COLOR_PAIR(colornum(COLOR_RED, COLOR_BLACK)));

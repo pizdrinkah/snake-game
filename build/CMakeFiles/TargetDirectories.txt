@@ -1,0 +1,4 @@
+/run/mount/big-drive/programming-stuff/cpp-stuff/snake-game/build/CMakeFiles/interface.dir
+/run/mount/big-drive/programming-stuff/cpp-stuff/snake-game/build/CMakeFiles/snake.dir
+/run/mount/big-drive/programming-stuff/cpp-stuff/snake-game/build/CMakeFiles/edit_cache.dir
+/run/mount/big-drive/programming-stuff/cpp-stuff/snake-game/build/CMakeFiles/rebuild_cache.dir

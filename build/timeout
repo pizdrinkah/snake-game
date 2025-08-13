@@ -1,0 +1,1220 @@
+[4mncurses[24m(3X)                                   Library calls                                   [4mncurses[24m(3X)
+
+[1mNAME[0m
+       [1mncurses [22m- character-cell terminal interface with optimized output
+
+[1mSYNOPSIS[0m
+       [1m#include <curses.h>[0m
+
+[1mDESCRIPTION[0m
+       The  “new  curses”  library offers the programmer a terminal-independent means of reading keyboard
+       and mouse input and updating character-cell terminals with output optimized to minimize screen up‐
+       dates.  [4mncurses[24m replaces the [4mcurses[24m libraries from System V Release 4  Unix  (“SVr4”)  and  4.4BSD
+       Unix,  the  development of which ceased in the 1990s.  This document describes [4mncurses[24m version 6.5
+       (patch 20240427).
+
+       [4mncurses[24m permits control of the terminal screen's contents;  abstraction  and  subdivision  thereof
+       with  [4mwindows[24m  and  [4mpads[24m;  the reading of terminal input; control of terminal input and output op‐
+       tions; environment query routines; color manipulation; the definition and use of [4msoft[24m [4mlabel[24m  keys;
+       [4mterminfo[24m  capability access; a [4mtermcap[24m compatibility interface; and an abstraction of the system's
+       API for manipulating the terminal (such as [4mtermios[24m(3)).
+
+       [4mncurses[24m implements the standard interface described by X/Open Curses Issue 7.  In many  behavioral
+       details  not  standardized by X/Open, [4mncurses[24m emulates the [4mcurses[24m library of SVr4 and provides nu‐
+       merous useful extensions.
+
+       [4mncurses[24m man pages employ several sections to clarify matters of usage  and  interoperability  with
+       other [4mcurses[24m implementations.
+
+       •   “NOTES”  describes  issues  and  caveats of which any user of the [4mncurses[24m API should be aware,
+           such as limitations on the size of an underlying integral type or the availability of  a  pre‐
+           processor  macro  exclusive  of  a  function definition (which prevents its address from being
+           taken).  This section also describes implementation details that will be  significant  to  the
+           programmer but which are not standardized.
+
+       •   “EXTENSIONS”  presents  [4mncurses[24m  innovations beyond the X/Open Curses standard and/or the SVr4
+           [4mcurses[24m implementation.  They are termed [4mextensions[24m to indicate that they cannot be implemented
+           solely by using the library API, but require access to the library's internal state.
+
+       •   “PORTABILITY” discusses matters (beyond the exercise of extensions) that should be  considered
+           when writing to a [4mcurses[24m standard, or for multiple implementations.
+
+       •   “HISTORY”  examines  points  of  detail  in  [4mncurses[24m and other [4mcurses[24m implementations over the
+           decades of their development, particularly where precedent or inertia have  frustrated  better
+           design (and, in a few cases, where such inertia has been overcome).
+
+       A [4mcurses[24m application must be linked with the library; use the [1m-lncurses [22moption to your compiler or
+       linker.   A  debugging  version  of  the  library  may  be  available;  if  so, link with it using
+       [1m-lncurses_g[22m.  (Your system integrator may have installed these libraries such that you can use the
+       options [1m-lcurses [22mand [1m-lcurses_g[22m, respectively.)  The [4mncurses_g[24m library generates trace logs (in  a
+       file called [4mtrace[24m in the current directory) that describe [4mncurses[24m actions.  See section “ALTERNATE
+       CONFIGURATIONS” below.
+
+   [1mApplication Structure[0m
+       A  [4mcurses[24m application uses information from the system locale; [4msetlocale[24m(3) prepares it for [4mcurses[0m
+       library calls.
+
+           setlocale(LC_ALL, "");
+
+       If the locale is not thus initialized, the library assumes that characters  are  printable  as  in
+       ISO 8859-1, to work with certain legacy programs.  You should initialize the locale; do not expect
+       consistent behavior from the library when the locale has not been set up.
+
+       [1minitscr[22m(3X)  or  [1mnewterm[22m(3X)  must be called to initialize [4mcurses[24m before use of any functions that
+       deal with windows and screens.
+
+       To get character-at-a-time input without echoing—most interactive, screen-oriented  programs  want
+       this—use the following sequence.
+
+           initscr(); cbreak(); noecho();
+
+       Most applications perform further setup as follows.
+
+           intrflush(stdscr, FALSE);
+           keypad(stdscr, TRUE);
+
+       A [4mcurses[24m program then often enters an event loop of some sort.  Call [1mendwin[22m(3X) before exiting.
+
+   [1mOverview[0m
+       A  [4mcurses[24m library abstracts the terminal screen by representing all or part of it as a [4mWINDOW[24m data
+       structure.  A [4mwindow[24m is a rectangular grid of character cells, addressed by row and column coordi‐
+       nates ([4my[24m, [4mx[24m), with the upper left corner as (0, 0).  A window called [1mstdscr[22m, the same size as  the
+       terminal screen, is always available.  Create others with [1mnewwin[22m(3X).
+
+       A  [4mcurses[24m  library does not manage overlapping windows (but see below).  You can either use [1mstdscr[0m
+       to manage one screen-filling window, or tile the screen into non-overlapping windows and  not  use
+       [1mstdscr [22mat all.  Mixing the two approaches will result in unpredictable and undesired effects.
+
+       Functions  permit  manipulation of a window and the [4mcursor[24m identifying the cell within it at which
+       the next output operation will occur.  Among those, the most basic  are  [1mmove[22m(3X)  and  [1maddch[22m(3X):
+       these place the cursor and write a character to [1mstdscr[22m, respectively.
+
+       Frequent  changes  to  the  terminal screen can cause unpleasant flicker or inefficient use of the
+       communication channel to the device, so the library does not generally  update  it  automatically.
+       Therefore,  after using [4mcurses[24m functions to accumulate a set of desired updates that make sense to
+       present together, call [1mrefresh[22m(3X) to tell the library to make the user's screen look like [1mstdscr[22m.
+       The library [4moptimizes[24m its output by computing a minimal number of operations to mutate the  screen
+       from  its  state  at the previous refresh to the new one.  Effective optimization demands accurate
+       information about the terminal device: the management of such information is the province  of  the
+       [1mterminfo[22m(3X) API, a feature of every standard [4mcurses[24m implementation.
+
+       Special  windows  called [4mpads[24m may also be manipulated.  These are windows that are not constrained
+       to the size of the terminal screen and whose contents  need  not  be  completely  displayed.   See
+       [1mcurs_pad[22m(3X).
+
+       In addition to drawing characters on the screen, rendering attributes and colors may be supported,
+       causing  the  characters  to show up in such modes as underlined, in reverse video, or in color on
+       terminals that support such display enhancements.  See [1mcurs_attr[22m(3X).
+
+       [4mcurses[24m predefines constants for a small set of forms-drawing graphics corresponding to the DEC Al‐
+       ternate Character Set (ACS), a feature of VT100 and other terminals.  See [1mwaddch[22m(3X).
+
+       [4mcurses[24m is implemented using the operating system's terminal driver; keystroke events are  received
+       not  as  scan  codes but as byte sequences.  Graphical keycaps (alphanumeric and punctuation keys,
+       and the space) appear as-is.  Everything else, including the tab, enter/return, keypad, arrow, and
+       function keys, appears as a control character or a multibyte [4mescape[24m [4msequence.[24m   [4mcurses[24m  translates
+       these into unique [4mkey[24m [4mcodes.[24m  See [1mgetch[22m(3X).
+
+       [4mncurses[24m provides reimplementations of the SVr4 [1mpanel[22m(3X), [1mform[22m(3X), and [1mmenu[22m(3X) libraries to ease
+       construction of user interfaces with [4mcurses[24m.
+
+   [1mInitialization[0m
+       The  selection  of an appropriate value of [4mTERM[24m in the process environment is essential to correct
+       [4mcurses[24m and [4mterminfo[24m library operation.  A well-configured system selects a correct [4mTERM[24m value  au‐
+       tomatically; [1mtset[22m(1) may assist with troubleshooting exotic situations.
+
+       If  you  change  the  terminal  type,  export the [4mTERM[24m environment variable in the shell, then run
+       [1mtset[22m(1) or the “[1mtput init[22m” command.  See subsection “Tabs and Initialization” of [1mterminfo[22m(5).
+
+       If the environment variables [4mLINES[24m and [4mCOLUMNS[24m are set, or if the [4mcurses[24m program is executing in a
+       graphical windowing environment, the information obtained thence overrides that obtained by  [4mterm‐[0m
+       [4minfo[24m.  An [4mncurses[24m extension supports resizable terminals; see [1mwresize[22m(3X).
+
+       If the environment variable [4mTERMINFO[24m is defined, a [4mcurses[24m program checks first for a terminal type
+       description  in  the  location it identifies.  [4mTERMINFO[24m is useful for developing experimental type
+       descriptions or when write permission to [4m/usr/share/terminfo[24m is not available.
+
+       See section “ENVIRONMENT” below.
+
+   [1mNaming Conventions[0m
+       [4mcurses[24m offers many functions in variant forms using a regular set of alternatives to the  name  of
+       an  elemental  one.   Those prefixed with “w” require a [4mWINDOW[24m pointer argument; those with a “mv”
+       prefix first perform cursor movement using [1mwmove[22m(3X); a “mvw”  prefix  indicates  both.   The  “w”
+       function is typically the elemental one; the removal of this prefix usually indicates operation on
+       [1mstdscr[22m.
+
+       Four functions prefixed with “p” require a pad argument.
+
+       In function synopses, [4mncurses[24m man pages apply the following names to parameters.
+
+                                    [4mbf[24m    [4mbool[24m ([1mTRUE [22mor [1mFALSE[22m)
+                                    [4mc[24m     a [4mchar[24m or [4mint[0m
+                                    [4mch[24m    a [4mchtype[0m
+                                    [4mwc[24m    a [4mwchar_t[24m or [4mwint_t[0m
+                                    [4mwch[24m   a [4mcchar_t[0m
+                                    [4mwin[24m   pointer to a [4mWINDOW[0m
+                                    [4mpad[24m   pointer to a [4mWINDOW[24m that is a pad
+
+   [1mWide and Non-wide Character Configurations[0m
+       This  manual  page describes functions that appear in any configuration of the library.  There are
+       two common configurations; see section “ALTERNATE CONFIGURATIONS” below.
+
+       [4mncurses[24m   is the library in its “non-wide” configuration, handling only eight-bit characters.   It
+                 stores  a  character combined with attributes in a [4mchtype[24m datum, which is often an alias
+                 of [4mint[24m.
+
+                 Attributes alone (with no corresponding character) can be stored in variables of  [4mchtype[0m
+                 or [4mattr_t[24m type.  In either case, they are represented as an integral bit mask.
+
+                 Each cell of a [4mWINDOW[24m is stored as a [4mchtype[24m.
+
+       [4mncursesw[24m  is  the library in its “wide” configuration, which handles character encodings requiring
+                 a larger data type than [4mchar[24m (a byte-sized type) can represent.  It adds about one third
+                 more calls using additional data types that can store such [4mmultibyte[24m characters.
+
+                 [4mcchar_t[24m  corresponds to the non-wide configuration's  [4mchtype[24m.   It  always  a  structure
+                          type,  because  it  stores  more  data than fit into a standard scalar type.  A
+                          character code may not be representable as a [4mchar[24m, and moreover more  than  one
+                          character  may occupy a cell (as with accent marks and other diacritics).  Each
+                          character is of type [4mwchar_t[24m; a complex character contains one spacing  charac‐
+                          ter  and zero or more non-spacing characters (see below).  Attributes and color
+                          data are stored in separate fields of the structure, not combined as in [4mchtype[24m.
+
+                 Each cell of a [4mWINDOW[24m is stored as a [4mcchar_t[24m.
+
+                 [1msetcchar[22m(3X) and [1mgetcchar[22m(3X) store and retrieve [4mcchar_t[24m data.  The wide library API  of
+                 [4mncurses[24m depends on two data types standardized by ISO C95.
+
+                 [4mwchar_t[24m  stores a wide character.  Like [4mchtype[24m, it may be an alias of [4mint[24m.  Depending on
+                          the  character encoding, a wide character may be [4mspacing[24m, meaning that it occu‐
+                          pies a character cell by itself and typically accompanies  cursor  advancement,
+                          or  [4mnon-spacing[24m, meaning that it occupies the same cell as a spacing character,
+                          is often regarded as a “modifier” of the base glyph with which it combines, and
+                          typically does not advance the cursor.
+
+                 [4mwint_t[24m   can store a [4mwchar_t[24m or the constant [1mWEOF[22m, analogously to the [4mint[24m-sized  charac‐
+                          ter manipulation functions of ISO C and its constant [1mEOF[22m.
+
+                 The wide library provides additional functions that complement those in the non-wide li‐
+                 brary  where the size of the underlying character type is significant.  A somewhat regu‐
+                 lar naming convention relates many of the wide variants to their non-wide  counterparts;
+                 where a non-wide function name contains “ch” or “str”, prefix it with “_w” to obtain the
+                 wide  counterpart.  For example, [1mwaddch [22mbecomes [1mwadd_wch[22m.  (Exceptions that add only “w”
+                 comprise [1maddwstr[22m, [1minwstr[22m, and their variants.)
+
+                 This convention is inapplicable to some non-wide function names,  so  other  transforma‐
+                 tions  are  used  for  the wide configuration: the window background management function
+                 “bkgd” becomes “bkgrnd”; the window border-drawing and -clearing functions are  suffixed
+                 with  “_set”;  and  character  attribute  manipulation  functions  like  “attron” become
+                 “attr_on”.
+
+   [1mFunction Name Index[0m
+       The following table lists the [4mcurses[24m functions provided in the non-wide and wide APIs and the cor‐
+       responding man pages that describe them.  Those flagged with “*” are [4mncurses[24m-specific, neither de‐
+       scribed by X/Open Curses nor present in SVr4.
+
+                                  [4m[1mcurses[24m [22mFunction Name     Man Page
+                                  ─────────────────────────────────────────────
+                                  COLOR_PAIR               [1mcurs_color[22m(3X)
+                                  PAIR_NUMBER              [1mcurs_color[22m(3X)
+                                  add_wch                  [1mcurs_add_wch[22m(3X)
+                                  add_wchnstr              [1mcurs_add_wchstr[22m(3X)
+                                  add_wchstr               [1mcurs_add_wchstr[22m(3X)
+                                  addch                    [1mcurs_addch[22m(3X)
+                                  addchnstr                [1mcurs_addchstr[22m(3X)
+                                  addchstr                 [1mcurs_addchstr[22m(3X)
+                                  addnstr                  [1mcurs_addstr[22m(3X)
+                                  addnwstr                 [1mcurs_addwstr[22m(3X)
+                                  addstr                   [1mcurs_addstr[22m(3X)
+                                  addwstr                  [1mcurs_addwstr[22m(3X)
+                                  alloc_pair               [1mnew_pair[22m(3X)*
+                                  assume_default_colors    [1mdefault_colors[22m(3X)*
+                                  attr_get                 [1mcurs_attr[22m(3X)
+                                  attr_off                 [1mcurs_attr[22m(3X)
+                                  attr_on                  [1mcurs_attr[22m(3X)
+                                  attr_set                 [1mcurs_attr[22m(3X)
+                                  attroff                  [1mcurs_attr[22m(3X)
+                                  attron                   [1mcurs_attr[22m(3X)
+                                  attrset                  [1mcurs_attr[22m(3X)
+                                  baudrate                 [1mcurs_termattrs[22m(3X)
+                                  beep                     [1mcurs_beep[22m(3X)
+                                  bkgd                     [1mcurs_bkgd[22m(3X)
+                                  bkgdset                  [1mcurs_bkgd[22m(3X)
+                                  bkgrnd                   [1mcurs_bkgrnd[22m(3X)
+                                  bkgrndset                [1mcurs_bkgrnd[22m(3X)
+                                  border                   [1mcurs_border[22m(3X)
+                                  border_set               [1mcurs_border_set[22m(3X)
+                                  box                      [1mcurs_border[22m(3X)
+                                  box_set                  [1mcurs_border_set[22m(3X)
+                                  can_change_color         [1mcurs_color[22m(3X)
+                                  cbreak                   [1mcurs_inopts[22m(3X)
+                                  chgat                    [1mcurs_attr[22m(3X)
+                                  clear                    [1mcurs_clear[22m(3X)
+                                  clearok                  [1mcurs_outopts[22m(3X)
+                                  clrtobot                 [1mcurs_clear[22m(3X)
+                                  clrtoeol                 [1mcurs_clear[22m(3X)
+                                  color_content            [1mcurs_color[22m(3X)
+                                  color_set                [1mcurs_attr[22m(3X)
+                                  copywin                  [1mcurs_overlay[22m(3X)
+                                  curs_set                 [1mcurs_kernel[22m(3X)
+                                  curses_trace             [1mcurs_trace[22m(3X)*
+                                  curses_version           [1mcurs_extend[22m(3X)*
+                                  def_prog_mode            [1mcurs_kernel[22m(3X)
+                                  def_shell_mode           [1mcurs_kernel[22m(3X)
+                                  define_key               [1mdefine_key[22m(3X)*
+                                  del_curterm              [1mcurs_terminfo[22m(3X)
+                                  delay_output             [1mcurs_util[22m(3X)
+                                  delch                    [1mcurs_delch[22m(3X)
+                                  deleteln                 [1mcurs_deleteln[22m(3X)
+                                  delscreen                [1mcurs_initscr[22m(3X)
+                                  delwin                   [1mcurs_window[22m(3X)
+                                  derwin                   [1mcurs_window[22m(3X)
+                                  doupdate                 [1mcurs_refresh[22m(3X)
+                                  dupwin                   [1mcurs_window[22m(3X)
+                                  echo                     [1mcurs_inopts[22m(3X)
+                                  echo_wchar               [1mcurs_add_wch[22m(3X)
+                                  echochar                 [1mcurs_addch[22m(3X)
+                                  endwin                   [1mcurs_initscr[22m(3X)
+                                  erase                    [1mcurs_clear[22m(3X)
+                                  erasechar                [1mcurs_termattrs[22m(3X)
+                                  erasewchar               [1mcurs_termattrs[22m(3X)
+                                  exit_curses              [1mcurs_memleaks[22m(3X)*
+                                  exit_terminfo            [1mcurs_memleaks[22m(3X)*
+                                  extended_color_content   [1mcurs_color[22m(3X)*
+                                  extended_pair_content    [1mcurs_color[22m(3X)*
+                                  extended_slk_color       [1mcurs_slk[22m(3X)*
+                                  filter                   [1mcurs_util[22m(3X)
+                                  find_pair                [1mnew_pair[22m(3X)*
+                                  flash                    [1mcurs_beep[22m(3X)
+                                  flushinp                 [1mcurs_util[22m(3X)
+                                  free_pair                [1mnew_pair[22m(3X)*
+                                  get_escdelay             [1mcurs_threads[22m(3X)*
+                                  get_wch                  [1mcurs_get_wch[22m(3X)
+                                  get_wstr                 [1mcurs_get_wstr[22m(3X)
+                                  getattrs                 [1mcurs_attr[22m(3X)
+                                  getbegx                  [1mcurs_legacy[22m(3X)*
+                                  getbegy                  [1mcurs_legacy[22m(3X)*
+                                  getbegyx                 [1mcurs_getyx[22m(3X)
+                                  getbkgd                  [1mcurs_bkgd[22m(3X)
+                                  getbkgrnd                [1mcurs_bkgrnd[22m(3X)
+                                  getcchar                 [1mcurs_getcchar[22m(3X)
+                                  getch                    [1mcurs_getch[22m(3X)
+                                  getcurx                  [1mcurs_legacy[22m(3X)*
+                                  getcury                  [1mcurs_legacy[22m(3X)*
+                                  getmaxx                  [1mcurs_legacy[22m(3X)*
+                                  getmaxy                  [1mcurs_legacy[22m(3X)*
+                                  getmaxyx                 [1mcurs_getyx[22m(3X)
+                                  getmouse                 [1mcurs_mouse[22m(3X)*
+                                  getn_wstr                [1mcurs_get_wstr[22m(3X)
+                                  getnstr                  [1mcurs_getstr[22m(3X)
+                                  getparx                  [1mcurs_legacy[22m(3X)*
+                                  getpary                  [1mcurs_legacy[22m(3X)*
+                                  getparyx                 [1mcurs_getyx[22m(3X)
+                                  getstr                   [1mcurs_getstr[22m(3X)
+                                  getsyx                   [1mcurs_kernel[22m(3X)
+                                  getwin                   [1mcurs_util[22m(3X)
+                                  getyx                    [1mcurs_getyx[22m(3X)
+                                  halfdelay                [1mcurs_inopts[22m(3X)
+                                  has_colors               [1mcurs_color[22m(3X)
+                                  has_ic                   [1mcurs_termattrs[22m(3X)
+                                  has_il                   [1mcurs_termattrs[22m(3X)
+                                  has_key                  [1mcurs_getch[22m(3X)*
+                                  has_mouse                [1mcurs_mouse[22m(3X)*
+                                  hline                    [1mcurs_border[22m(3X)
+                                  hline_set                [1mcurs_border_set[22m(3X)
+                                  idcok                    [1mcurs_outopts[22m(3X)
+                                  idlok                    [1mcurs_outopts[22m(3X)
+                                  immedok                  [1mcurs_outopts[22m(3X)
+                                  in_wch                   [1mcurs_in_wch[22m(3X)
+                                  in_wchnstr               [1mcurs_in_wchstr[22m(3X)
+                                  in_wchstr                [1mcurs_in_wchstr[22m(3X)
+                                  inch                     [1mcurs_inch[22m(3X)
+                                  inchnstr                 [1mcurs_inchstr[22m(3X)
+                                  inchstr                  [1mcurs_inchstr[22m(3X)
+                                  init_color               [1mcurs_color[22m(3X)
+                                  init_extended_color      [1mcurs_color[22m(3X)*
+                                  init_extended_pair       [1mcurs_color[22m(3X)*
+                                  init_pair                [1mcurs_color[22m(3X)
+                                  initscr                  [1mcurs_initscr[22m(3X)
+                                  innstr                   [1mcurs_instr[22m(3X)
+                                  innwstr                  [1mcurs_inwstr[22m(3X)
+                                  ins_nwstr                [1mcurs_ins_wstr[22m(3X)
+                                  ins_wch                  [1mcurs_ins_wch[22m(3X)
+                                  ins_wstr                 [1mcurs_ins_wstr[22m(3X)
+                                  insch                    [1mcurs_insch[22m(3X)
+                                  insdelln                 [1mcurs_deleteln[22m(3X)
+                                  insertln                 [1mcurs_deleteln[22m(3X)
+                                  insnstr                  [1mcurs_insstr[22m(3X)
+                                  insstr                   [1mcurs_insstr[22m(3X)
+                                  instr                    [1mcurs_instr[22m(3X)
+                                  intrflush                [1mcurs_inopts[22m(3X)
+                                  inwstr                   [1mcurs_inwstr[22m(3X)
+                                  is_cbreak                [1mcurs_inopts[22m(3X)*
+                                  is_cleared               [1mcurs_opaque[22m(3X)*
+                                  is_echo                  [1mcurs_inopts[22m(3X)*
+                                  is_idcok                 [1mcurs_opaque[22m(3X)*
+                                  is_idlok                 [1mcurs_opaque[22m(3X)*
+                                  is_immedok               [1mcurs_opaque[22m(3X)*
+                                  is_keypad                [1mcurs_opaque[22m(3X)*
+                                  is_leaveok               [1mcurs_opaque[22m(3X)*
+                                  is_linetouched           [1mcurs_touch[22m(3X)
+                                  is_nl                    [1mcurs_inopts[22m(3X)*
+                                  is_nodelay               [1mcurs_opaque[22m(3X)*
+                                  is_notimeout             [1mcurs_opaque[22m(3X)*
+                                  is_pad                   [1mcurs_opaque[22m(3X)*
+                                  is_raw                   [1mcurs_inopts[22m(3X)*
+                                  is_scrollok              [1mcurs_opaque[22m(3X)*
+                                  is_subwin                [1mcurs_opaque[22m(3X)*
+                                  is_syncok                [1mcurs_opaque[22m(3X)*
+                                  is_term_resized          [1mresizeterm[22m(3X)*
+                                  is_wintouched            [1mcurs_touch[22m(3X)
+                                  isendwin                 [1mcurs_initscr[22m(3X)
+                                  key_defined              [1mkey_defined[22m(3X)*
+                                  key_name                 [1mcurs_util[22m(3X)
+                                  keybound                 [1mkeybound[22m(3X)*
+                                  keyname                  [1mcurs_util[22m(3X)
+                                  keyok                    [1mkeyok[22m(3X)*
+                                  keypad                   [1mcurs_inopts[22m(3X)
+                                  killchar                 [1mcurs_termattrs[22m(3X)
+                                  killwchar                [1mcurs_termattrs[22m(3X)
+                                  leaveok                  [1mcurs_outopts[22m(3X)
+                                  longname                 [1mcurs_termattrs[22m(3X)
+                                  mcprint                  [1mcurs_print[22m(3X)*
+                                  meta                     [1mcurs_inopts[22m(3X)
+                                  mouse_trafo              [1mcurs_mouse[22m(3X)*
+                                  mouseinterval            [1mcurs_mouse[22m(3X)*
+                                  mousemask                [1mcurs_mouse[22m(3X)*
+                                  move                     [1mcurs_move[22m(3X)
+                                  mvadd_wch                [1mcurs_add_wch[22m(3X)
+                                  mvadd_wchnstr            [1mcurs_add_wchstr[22m(3X)
+                                  mvadd_wchstr             [1mcurs_add_wchstr[22m(3X)
+                                  mvaddch                  [1mcurs_addch[22m(3X)
+                                  mvaddchnstr              [1mcurs_addchstr[22m(3X)
+                                  mvaddchstr               [1mcurs_addchstr[22m(3X)
+                                  mvaddnstr                [1mcurs_addstr[22m(3X)
+                                  mvaddnwstr               [1mcurs_addwstr[22m(3X)
+                                  mvaddstr                 [1mcurs_addstr[22m(3X)
+                                  mvaddwstr                [1mcurs_addwstr[22m(3X)
+                                  mvchgat                  [1mcurs_attr[22m(3X)
+                                  mvcur                    [1mcurs_terminfo[22m(3X)
+                                  mvdelch                  [1mcurs_delch[22m(3X)
+                                  mvderwin                 [1mcurs_window[22m(3X)
+                                  mvget_wch                [1mcurs_get_wch[22m(3X)
+                                  mvget_wstr               [1mcurs_get_wstr[22m(3X)
+                                  mvgetch                  [1mcurs_getch[22m(3X)
+                                  mvgetn_wstr              [1mcurs_get_wstr[22m(3X)
+                                  mvgetnstr                [1mcurs_getstr[22m(3X)
+                                  mvgetstr                 [1mcurs_getstr[22m(3X)
+                                  mvhline                  [1mcurs_border[22m(3X)
+                                  mvhline_set              [1mcurs_border_set[22m(3X)
+                                  mvin_wch                 [1mcurs_in_wch[22m(3X)
+                                  mvin_wchnstr             [1mcurs_in_wchstr[22m(3X)
+                                  mvin_wchstr              [1mcurs_in_wchstr[22m(3X)
+                                  mvinch                   [1mcurs_inch[22m(3X)
+                                  mvinchnstr               [1mcurs_inchstr[22m(3X)
+                                  mvinchstr                [1mcurs_inchstr[22m(3X)
+                                  mvinnstr                 [1mcurs_instr[22m(3X)
+                                  mvinnwstr                [1mcurs_inwstr[22m(3X)
+                                  mvins_nwstr              [1mcurs_ins_wstr[22m(3X)
+                                  mvins_wch                [1mcurs_ins_wch[22m(3X)
+                                  mvins_wstr               [1mcurs_ins_wstr[22m(3X)
+                                  mvinsch                  [1mcurs_insch[22m(3X)
+                                  mvinsnstr                [1mcurs_insstr[22m(3X)
+                                  mvinsstr                 [1mcurs_insstr[22m(3X)
+                                  mvinstr                  [1mcurs_instr[22m(3X)
+                                  mvinwstr                 [1mcurs_inwstr[22m(3X)
+                                  wprintw(stdscr,                 [1mcurs_printw[22m(3X)
+                                  mvscanw                  [1mcurs_scanw[22m(3X)
+                                  mvvline                  [1mcurs_border[22m(3X)
+                                  mvvline_set              [1mcurs_border_set[22m(3X)
+                                  mvwadd_wch               [1mcurs_add_wch[22m(3X)
+                                  mvwadd_wchnstr           [1mcurs_add_wchstr[22m(3X)
+                                  mvwadd_wchstr            [1mcurs_add_wchstr[22m(3X)
+                                  mvwaddch                 [1mcurs_addch[22m(3X)
+                                  mvwaddchnstr             [1mcurs_addchstr[22m(3X)
+                                  mvwaddchstr              [1mcurs_addchstr[22m(3X)
+                                  mvwaddnstr               [1mcurs_addstr[22m(3X)
+                                  mvwaddnwstr              [1mcurs_addwstr[22m(3X)
+                                  mvwaddstr                [1mcurs_addstr[22m(3X)
+                                  mvwaddwstr               [1mcurs_addwstr[22m(3X)
+                                  mvwchgat                 [1mcurs_attr[22m(3X)
+                                  mvwdelch                 [1mcurs_delch[22m(3X)
+                                  mvwget_wch               [1mcurs_get_wch[22m(3X)
+                                  mvwget_wstr              [1mcurs_get_wstr[22m(3X)
+                                  mvwgetch                 [1mcurs_getch[22m(3X)
+                                  mvwgetn_wstr             [1mcurs_get_wstr[22m(3X)
+                                  mvwgetnstr               [1mcurs_getstr[22m(3X)
+                                  mvwgetstr                [1mcurs_getstr[22m(3X)
+                                  mvwhline                 [1mcurs_border[22m(3X)
+                                  mvwhline_set             [1mcurs_border_set[22m(3X)
+                                  mvwin                    [1mcurs_window[22m(3X)
+                                  mvwin_wch                [1mcurs_in_wch[22m(3X)
+                                  mvwin_wchnstr            [1mcurs_in_wchstr[22m(3X)
+                                  mvwin_wchstr             [1mcurs_in_wchstr[22m(3X)
+                                  mvwinch                  [1mcurs_inch[22m(3X)
+                                  mvwinchnstr              [1mcurs_inchstr[22m(3X)
+                                  mvwinchstr               [1mcurs_inchstr[22m(3X)
+                                  mvwinnstr                [1mcurs_instr[22m(3X)
+                                  mvwinnwstr               [1mcurs_inwstr[22m(3X)
+                                  mvwins_nwstr             [1mcurs_ins_wstr[22m(3X)
+                                  mvwins_wch               [1mcurs_ins_wch[22m(3X)
+                                  mvwins_wstr              [1mcurs_ins_wstr[22m(3X)
+                                  mvwinsch                 [1mcurs_insch[22m(3X)
+                                  mvwinsnstr               [1mcurs_insstr[22m(3X)
+                                  mvwinsstr                [1mcurs_insstr[22m(3X)
+                                  mvwinstr                 [1mcurs_instr[22m(3X)
+                                  mvwinwstr                [1mcurs_inwstr[22m(3X)
+                                  mvwprintw                [1mcurs_printw[22m(3X)
+                                  mvwscanw                 [1mcurs_scanw[22m(3X)
+                                  mvwvline                 [1mcurs_border[22m(3X)
+                                  mvwvline_set             [1mcurs_border_set[22m(3X)
+                                  napms                    [1mcurs_kernel[22m(3X)
+                                  newpad                   [1mcurs_pad[22m(3X)
+                                  newterm                  [1mcurs_initscr[22m(3X)
+                                  newwin                   [1mcurs_window[22m(3X)
+                                  nl                       [1mcurs_inopts[22m(3X)
+                                  nocbreak                 [1mcurs_inopts[22m(3X)
+                                  nodelay                  [1mcurs_inopts[22m(3X)
+                                  noecho                   [1mcurs_inopts[22m(3X)
+                                  nofilter                 [1mcurs_util[22m(3X)*
+                                  nonl                     [1mcurs_inopts[22m(3X)
+                                  noqiflush                [1mcurs_inopts[22m(3X)
+                                  noraw                    [1mcurs_inopts[22m(3X)
+                                  notimeout                [1mcurs_inopts[22m(3X)
+                                  overlay                  [1mcurs_overlay[22m(3X)
+                                  overwrite                [1mcurs_overlay[22m(3X)
+                                  pair_content             [1mcurs_color[22m(3X)
+                                  pecho_wchar              [1mcurs_pad[22m(3X)
+                                  pechochar                [1mcurs_pad[22m(3X)
+                                  pnoutrefresh             [1mcurs_pad[22m(3X)
+                                  prefresh                 [1mcurs_pad[22m(3X)
+                                  printw                   [1mcurs_printw[22m(3X)
+                                  putp                     [1mcurs_terminfo[22m(3X)
+                                  putwin                   [1mcurs_util[22m(3X)
+                                  qiflush                  [1mcurs_inopts[22m(3X)
+                                  raw                      [1mcurs_inopts[22m(3X)
+                                  redrawwin                [1mcurs_refresh[22m(3X)
+                                  refresh                  [1mcurs_refresh[22m(3X)
+                                  reset_color_pairs        [1mcurs_color[22m(3X)*
+                                  reset_prog_mode          [1mcurs_kernel[22m(3X)
+                                  reset_shell_mode         [1mcurs_kernel[22m(3X)
+                                  resetty                  [1mcurs_kernel[22m(3X)
+                                  resize_term              [1mresizeterm[22m(3X)*
+                                  resizeterm               [1mresizeterm[22m(3X)*
+                                  restartterm              [1mcurs_terminfo[22m(3X)
+                                  ripoffline               [1mcurs_kernel[22m(3X)
+                                  savetty                  [1mcurs_kernel[22m(3X)
+                                  scanw                    [1mcurs_scanw[22m(3X)
+                                  scr_dump                 [1mcurs_scr_dump[22m(3X)
+                                  scr_init                 [1mcurs_scr_dump[22m(3X)
+                                  scr_restore              [1mcurs_scr_dump[22m(3X)
+                                  scr_set                  [1mcurs_scr_dump[22m(3X)
+                                  scrl                     [1mcurs_scroll[22m(3X)
+                                  scroll                   [1mcurs_scroll[22m(3X)
+                                  scrollok                 [1mcurs_outopts[22m(3X)
+                                  set_curterm              [1mcurs_terminfo[22m(3X)
+                                  set_escdelay             [1mcurs_threads[22m(3X)*
+                                  set_tabsize              [1mcurs_threads[22m(3X)*
+                                  set_term                 [1mcurs_initscr[22m(3X)
+                                  setcchar                 [1mcurs_getcchar[22m(3X)
+                                  setscrreg                [1mcurs_outopts[22m(3X)
+                                  setsyx                   [1mcurs_kernel[22m(3X)
+                                  setupterm                [1mcurs_terminfo[22m(3X)
+                                  slk_attr                 [1mcurs_slk[22m(3X)*
+                                  slk_attr_off             [1mcurs_slk[22m(3X)
+                                  slk_attr_on              [1mcurs_slk[22m(3X)
+                                  slk_attr_set             [1mcurs_slk[22m(3X)
+                                  slk_attroff              [1mcurs_slk[22m(3X)
+                                  slk_attron               [1mcurs_slk[22m(3X)
+                                  slk_attrset              [1mcurs_slk[22m(3X)
+                                  slk_clear                [1mcurs_slk[22m(3X)
+                                  slk_color                [1mcurs_slk[22m(3X)
+                                  slk_init                 [1mcurs_slk[22m(3X)
+                                  slk_label                [1mcurs_slk[22m(3X)
+                                  slk_noutrefresh          [1mcurs_slk[22m(3X)
+                                  slk_refresh              [1mcurs_slk[22m(3X)
+                                  slk_restore              [1mcurs_slk[22m(3X)
+                                  slk_set                  [1mcurs_slk[22m(3X)
+                                  slk_touch                [1mcurs_slk[22m(3X)
+                                  slk_wset                 [1mcurs_slk[22m(3X)
+                                  standend                 [1mcurs_attr[22m(3X)
+                                  standout                 [1mcurs_attr[22m(3X)
+                                  start_color              [1mcurs_color[22m(3X)
+                                  subpad                   [1mcurs_pad[22m(3X)
+                                  subwin                   [1mcurs_window[22m(3X)
+                                  syncok                   [1mcurs_window[22m(3X)
+                                  term_attrs               [1mcurs_termattrs[22m(3X)
+                                  termattrs                [1mcurs_termattrs[22m(3X)
+                                  termname                 [1mcurs_termattrs[22m(3X)
+                                  tgetent                  [1mcurs_termcap[22m(3X)
+                                  tgetflag                 [1mcurs_termcap[22m(3X)
+                                  tgetnum                  [1mcurs_termcap[22m(3X)
+                                  tgetstr                  [1mcurs_termcap[22m(3X)
+                                  tgoto                    [1mcurs_termcap[22m(3X)
+                                  tigetflag                [1mcurs_terminfo[22m(3X)
+                                  tigetnum                 [1mcurs_terminfo[22m(3X)
+                                  tigetstr                 [1mcurs_terminfo[22m(3X)
+                                  timeout                  [1mcurs_inopts[22m(3X)
+                                  tiparm                   [1mcurs_terminfo[22m(3X)
+                                  tiparm_s                 [1mcurs_terminfo[22m(3X)*
+                                  tiscan_s                 [1mcurs_terminfo[22m(3X)*
+                                  touchline                [1mcurs_touch[22m(3X)
+                                  touchwin                 [1mcurs_touch[22m(3X)
+                                  tparm                    [1mcurs_terminfo[22m(3X)
+                                  tputs                    [1mcurs_termcap[22m(3X)
+                                  tputs                    [1mcurs_terminfo[22m(3X)
+                                  trace                    [1mcurs_trace[22m(3X)*
+                                  typeahead                [1mcurs_inopts[22m(3X)
+                                  unctrl                   [1mcurs_util[22m(3X)
+                                  unget_wch                [1mcurs_get_wch[22m(3X)
+                                  ungetch                  [1mcurs_getch[22m(3X)
+                                  ungetmouse               [1mcurs_mouse[22m(3X)*
+                                  untouchwin               [1mcurs_touch[22m(3X)
+                                  use_default_colors       [1mdefault_colors[22m(3X)*
+                                  use_env                  [1mcurs_util[22m(3X)
+                                  use_extended_names       [1mcurs_extend[22m(3X)*
+                                  use_legacy_coding        [1mlegacy_coding[22m(3X)*
+                                  use_screen               [1mcurs_threads[22m(3X)*
+                                  use_tioctl               [1mcurs_util[22m(3X)*
+                                  use_window               [1mcurs_threads[22m(3X)*
+                                  vid_attr                 [1mcurs_terminfo[22m(3X)
+                                  vid_puts                 [1mcurs_terminfo[22m(3X)
+                                  vidattr                  [1mcurs_terminfo[22m(3X)
+                                  vidputs                  [1mcurs_terminfo[22m(3X)
+                                  vline                    [1mcurs_border[22m(3X)
+                                  vline_set                [1mcurs_border_set[22m(3X)
+                                  vw_printw                [1mcurs_printw[22m(3X)
+                                  vw_scanw                 [1mcurs_scanw[22m(3X)
+                                  vwprintw                 [1mcurs_printw[22m(3X)
+                                  vwscanw                  [1mcurs_scanw[22m(3X)
+                                  wadd_wch                 [1mcurs_add_wch[22m(3X)
+                                  wadd_wchnstr             [1mcurs_add_wchstr[22m(3X)
+                                  wadd_wchstr              [1mcurs_add_wchstr[22m(3X)
+                                  waddch                   [1mcurs_addch[22m(3X)
+                                  waddchnstr               [1mcurs_addchstr[22m(3X)
+                                  waddchstr                [1mcurs_addchstr[22m(3X)
+                                  waddnstr                 [1mcurs_addstr[22m(3X)
+                                  waddnwstr                [1mcurs_addwstr[22m(3X)
+                                  waddstr                  [1mcurs_addstr[22m(3X)
+                                  waddwstr                 [1mcurs_addwstr[22m(3X)
+                                  wattr_get                [1mcurs_attr[22m(3X)
+                                  wattr_off                [1mcurs_attr[22m(3X)
+                                  wattr_on                 [1mcurs_attr[22m(3X)
+                                  wattr_set                [1mcurs_attr[22m(3X)
+                                  wattroff                 [1mcurs_attr[22m(3X)
+                                  wattron                  [1mcurs_attr[22m(3X)
+                                  wattrset                 [1mcurs_attr[22m(3X)
+                                  wbkgd                    [1mcurs_bkgd[22m(3X)
+                                  wbkgdset                 [1mcurs_bkgd[22m(3X)
+                                  wbkgrnd                  [1mcurs_bkgrnd[22m(3X)
+                                  wbkgrndset               [1mcurs_bkgrnd[22m(3X)
+                                  wborder                  [1mcurs_border[22m(3X)
+                                  wborder_set              [1mcurs_border_set[22m(3X)
+                                  wchgat                   [1mcurs_attr[22m(3X)
+                                  wclear                   [1mcurs_clear[22m(3X)
+                                  wclrtobot                [1mcurs_clear[22m(3X)
+                                  wclrtoeol                [1mcurs_clear[22m(3X)
+                                  wcolor_set               [1mcurs_attr[22m(3X)
+                                  wcursyncup               [1mcurs_window[22m(3X)
+                                  wdelch                   [1mcurs_delch[22m(3X)
+                                  wdeleteln                [1mcurs_deleteln[22m(3X)
+                                  wecho_wchar              [1mcurs_add_wch[22m(3X)
+                                  wechochar                [1mcurs_addch[22m(3X)
+                                  wenclose                 [1mcurs_mouse[22m(3X)*
+                                  werase                   [1mcurs_clear[22m(3X)
+                                  wget_wch                 [1mcurs_get_wch[22m(3X)
+                                  wget_wstr                [1mcurs_get_wstr[22m(3X)
+                                  wgetbkgrnd               [1mcurs_bkgrnd[22m(3X)
+                                  wgetch                   [1mcurs_getch[22m(3X)
+                                  wgetdelay                [1mcurs_opaque[22m(3X)*
+                                  wgetn_wstr               [1mcurs_get_wstr[22m(3X)
+                                  wgetnstr                 [1mcurs_getstr[22m(3X)
+                                  wgetparent               [1mcurs_opaque[22m(3X)*
+                                  wgetscrreg               [1mcurs_opaque[22m(3X)*
+                                  wgetstr                  [1mcurs_getstr[22m(3X)
+                                  whline                   [1mcurs_border[22m(3X)
+                                  whline_set               [1mcurs_border_set[22m(3X)
+                                  win_wch                  [1mcurs_in_wch[22m(3X)
+                                  win_wchnstr              [1mcurs_in_wchstr[22m(3X)
+                                  win_wchstr               [1mcurs_in_wchstr[22m(3X)
+                                  winch                    [1mcurs_inch[22m(3X)
+                                  winchnstr                [1mcurs_inchstr[22m(3X)
+                                  winchstr                 [1mcurs_inchstr[22m(3X)
+                                  winnstr                  [1mcurs_instr[22m(3X)
+                                  winnwstr                 [1mcurs_inwstr[22m(3X)
+                                  wins_nwstr               [1mcurs_ins_wstr[22m(3X)
+                                  wins_wch                 [1mcurs_ins_wch[22m(3X)
+                                  wins_wstr                [1mcurs_ins_wstr[22m(3X)
+                                  winsch                   [1mcurs_insch[22m(3X)
+                                  winsdelln                [1mcurs_deleteln[22m(3X)
+                                  winsertln                [1mcurs_deleteln[22m(3X)
+                                  winsnstr                 [1mcurs_insstr[22m(3X)
+                                  winsstr                  [1mcurs_insstr[22m(3X)
+                                  winstr                   [1mcurs_instr[22m(3X)
+                                  winwstr                  [1mcurs_inwstr[22m(3X)
+                                  wmouse_trafo             [1mcurs_mouse[22m(3X)*
+                                  wmove                    [1mcurs_move[22m(3X)
+                                  wnoutrefresh             [1mcurs_refresh[22m(3X)
+                                  wprintw                  [1mcurs_printw[22m(3X)
+                                  wredrawln                [1mcurs_refresh[22m(3X)
+                                  wrefresh                 [1mcurs_refresh[22m(3X)
+                                  wresize                  [1mwresize[22m(3X)*
+                                  wscanw                   [1mcurs_scanw[22m(3X)
+                                  wscrl                    [1mcurs_scroll[22m(3X)
+                                  wsetscrreg               [1mcurs_outopts[22m(3X)
+                                  wstandend                [1mcurs_attr[22m(3X)
+                                  wstandout                [1mcurs_attr[22m(3X)
+                                  wsyncdown                [1mcurs_window[22m(3X)
+                                  wsyncup                  [1mcurs_window[22m(3X)
+                                  wtimeout                 [1mcurs_inopts[22m(3X)
+                                  wtouchln                 [1mcurs_touch[22m(3X)
+                                  wunctrl                  [1mcurs_util[22m(3X)
+                                  wvline                   [1mcurs_border[22m(3X)
+                                  wvline_set               [1mcurs_border_set[22m(3X)
+
+       [4mncurses[24m's [4mscreen-pointer[24m [4mextension[24m adds additional functions corresponding to many of  the  above,
+       each with an “_sp” suffix; see [1mcurs_sp_funcs[22m(3X).
+
+       The availability of some extensions is configurable when [4mncurses[24m is compiled; see sections “ALTER‐
+       NATE CONFIGURATIONS” and “EXTENSIONS” below.
+
+[1mRETURN VALUE[0m
+       Unless  otherwise noted, functions that return an integer return [1mOK [22mon success and [1mERR [22mon failure.
+       Functions that return pointers return [1mNULL [22mon failure.  Typically, [4mncurses[24m treats a  null  pointer
+       passed  as  a  function parameter as a failure.  Functions prefixed with “mv” first perform cursor
+       movement and fail if the position ([4my[24m, [4mx[24m) is outside the window boundaries.
+
+[1mENVIRONMENT[0m
+       The following symbols from the process environment customize the runtime behavior of  [4mncurses[24m  ap‐
+       plications.   The  library  may  be configured to disregard the variables [4mTERMINFO[24m, [4mTERMINFO_DIRS[24m,
+       [4mTERMPATH[24m, and [4mHOME[24m, if the user is the superuser (root), or  the  application  uses  [4msetuid[24m(2)  or
+       [4msetgid[24m(2).
+
+   [4m[1mBAUDRATE[0m
+       The  debugging  library checks this variable when the application has redirected output to a file.
+       Its integral value is used for the baud rate.  If that value is absent or  invalid,  [4mncurses[24m  uses
+       9600.  This feature allows testers to construct repeatable test cases that take into account opti‐
+       mization decisions that depend on baud rate.
+
+   [4m[1mCC[24m (command character)[0m
+       When set, the [1mcommand_character [22m([1mcmdch[22m) capability value of loaded [4mterminfo[24m entries changes to the
+       value of this variable.  Very few [4mterminfo[24m entries provide this feature.
+
+       Because  this  name  is  also used in development environments to represent the C compiler's name,
+       [4mncurses[24m ignores its value if it is not one character in length.
+
+   [4m[1mCOLUMNS[0m
+       This variable specifies the width of the screen in characters.  Applications running in a  window‐
+       ing  environment  usually  are able to obtain the width of the window in which they are executing.
+       If [4mCOLUMNS[24m is not defined and the terminal's screen size is not available from the  terminal  dri‐
+       ver, [4mncurses[24m uses the size specified by the [1mcolumns [22m([1mcols[22m) capability of the terminal type's entry
+       in the [4mterminfo[24m database, if any.
+
+       It is important that your application use the correct screen size.  Automatic detection thereof is
+       not  always possible because an application may be running on a host that does not honor NAWS (Ne‐
+       gotiations About Window Size) or as a different user ID than the  owner  of  the  terminal  device
+       file.   Setting  [4mCOLUMNS[24m and/or [4mLINES[24m overrides the library's use of the screen size obtained from
+       the operating system.
+
+       The [4mCOLUMNS[24m and [4mLINES[24m variables may be specified independently.  This property is useful  to  cir‐
+       cumvent  misfeatures  of  legacy  terminal  type descriptions; [4mxterm[24m(1) descriptions specifying 65
+       lines were once notorious.  For best results, avoid specifying [1mcols [22mand [1mlines [22mcapability codes  in
+       [4mterminfo[24m descriptions of terminal emulators.
+
+       [1muse_env[22m(3X)  can  disable  use of the process environment in determining the screen size.  [1muse_ti‐[0m
+       [1moctl[22m(3X) can update [4mCOLUMNS[24m and [4mLINES[24m to match the screen size obtained from system calls  or  the
+       terminal database.
+
+   [4m[1mESCDELAY[0m
+       For  [4mcurses[24m  to distinguish the ESC character resulting from a user's press of the “Escape” key on
+       the input device from one beginning an [4mescape[24m [4msequence[24m (as commonly produced by function keys), it
+       waits after receiving the escape character to see if further characters are available on the input
+       stream within a short interval.  A global variable [1mESCDELAY [22mstores this interval in  milliseconds.
+       The default value of 1000 (one second) is adequate for most uses.  This environment variable over‐
+       rides it.
+
+       The  most  common  instance  where you may wish to change this value is to work with a remote host
+       over a slow communication channel.  If the host running a [4mcurses[24m application does not receive  the
+       characters  of  an  escape sequence in a timely manner, the library can interpret them as multiple
+       key stroke events.
+
+       [4mxterm[24m(1) mouse events are a form of escape sequence; therefore, if your  application  makes  heavy
+       use  of multiple-clicking, you may wish to lengthen the default value because the delay applies to
+       the composite multi-click event as well as the individual clicks.
+
+       Portable applications should not rely upon the presence of [1mESCDELAY [22min either  form,  but  setting
+       the  environment  variable rather than the global variable does not create problems when compiling
+       an application.
+
+       If [1mkeypad[22m(3X) is disabled for the [4mcurses[24m window receiving input, a program must  disambiguate  es‐
+       cape sequences itself.
+
+   [4m[1mHOME[0m
+       [4mncurses[24m  may read and write auxiliary terminal descriptions in [4m.termcap[24m and [4m.terminfo[24m files in the
+       user's home directory.
+
+   [4m[1mLINES[0m
+       This counterpart to [4mCOLUMNS[24m specifies the height of the screen in characters.   The  corresponding
+       [4mterminfo[24m capability and code is [1mlines[22m.  See the description of the [4mCOLUMNS[24m variable above.
+
+   [4m[1mMOUSE_BUTTONS_123[0m
+       (OS/2  EMX  port only) OS/2 numbers a three-button mouse inconsistently with other platforms, such
+       that 1 is the left button, 2 the right, and 3 the middle.  This variable customizes the mouse but‐
+       ton numbering.  Its value must be three digits 1-3 in any order.  By default,  [4mncurses[24m  assumes  a
+       numbering of “132”.
+
+   [4m[1mNCURSES_ASSUMED_COLORS[0m
+       If  set,  this variable overrides the [4mncurses[24m library's compiled-in assumption that the terminal's
+       default colors are white on black; see [1mdefault_colors[22m(3X).   Set  the  foreground  and  background
+       color  values  with  this  environment  variable by assigning it two integer values separated by a
+       comma, indicating foregound and background color numbers, respectively.
+
+       For example, to tell [4mncurses[24m not to assume anything about the colors, use a value of “-1,-1”.   To
+       make  the default color scheme green on black, use “2,0”.  [4mncurses[24m accepts integral values from -1
+       up to the value of the [4mterminfo[24m [1mmax_colors [22m([1mcolors[22m) capability.
+
+   [4m[1mNCURSES_CONSOLE2[0m
+       (MinGW port only) The [4mConsole2[24m program defectively handles the Microsoft Console API call  [4mCreate‐[0m
+       [4mConsoleScreenBuffer[24m.  Applications that use it will hang.  However, it is possible to simulate the
+       action  of  this  call by mapping coordinates, explicitly saving and restoring the original screen
+       contents.  Setting the environment variable [4mNCGDB[24m has the same effect.
+
+   [4m[1mNCURSES_GPM_TERMS[0m
+       (Linux only) When [4mncurses[24m is configured to use the GPM interface, this variable may  list  one  or
+       more  terminal  names against which the [4mTERM[24m variable (see below) is matched.  An empty value dis‐
+       ables the GPM interface, using [4mncurses[24m's built-in support for [4mxterm[24m(1)  mouse  protocols  instead.
+       If the variable is absent, [4mncurses[24m attempts to open GPM if [4mTERM[24m contains “linux”.
+
+   [4m[1mNCURSES_NO_HARD_TABS[0m
+       [4mncurses[24m may use tab characters in cursor movement optimization.  In some cases, your terminal dri‐
+       ver  may not handle them properly.  Set this environment variable to any value to disable the fea‐
+       ture.  You can also adjust your [4mstty[24m(1) settings to avoid the problem.
+
+   [4m[1mNCURSES_NO_MAGIC_COOKIE[0m
+       Many terminals store video attributes as a property of a character cell, as [4mcurses[24m does.  Histori‐
+       cally, some recorded changes in video attributes as data that logically [4moccupies[24m  character  cells
+       on  the display, switching attributes on or off, similarly to tags in a markup language; these are
+       termed “magic cookies”, and must be subsequently overprinted.  If the [4mterminfo[24m entry for your ter‐
+       minal type does not adequately describe its handling of magic cookies, set this  variable  to  any
+       value to instruct [4mncurses[24m to disable attributes entirely.
+
+   [4m[1mNCURSES_NO_PADDING[0m
+       Most terminal type descriptions in the [4mterminfo[24m database detail hardware devices.  Many people use
+       [4mcurses[24m-based  applications  in  terminal  emulator  programs  that run in a windowing environment.
+       These programs can duplicate all of the important features of a hardware terminal, but often  lack
+       their  limitations.   Chief  among  these absent drawbacks is the problem of data flow management;
+       that is, limiting the speed of communication to what the hardware could handle.  Unless a hardware
+       terminal is interfaced into a terminal concentrator (which does flow control), an application must
+       manage flow control itself to prevent overruns and data loss.
+
+       A solution that comes at no hardware cost is for an application to pause after directing a  termi‐
+       nal  to execute an operation that it performs slowly, such as clearing the display.  Many terminal
+       type descriptions, including that for the VT100, embed delay specifications in capabilities.   You
+       may  wish  to  use  these  terminal  descriptions  without  paying  the  performance penalty.  Set
+       [4mNCURSES_NO_PADDING[24m to any value to disable all but mandatory padding.  Mandatory padding  is  used
+       by such terminal capabilities as [1mflash_screen [22m([1mflash[22m).
+
+   [4m[1mNCURSES_NO_SETBUF[0m
+       (Obsolete) Prior to internal changes developed in [4mncurses[24m 5.9 (patches 20120825 through 20130126),
+       the  library  used [4msetbuf[24m(3) to enable fully buffered output when initializing the terminal.  This
+       was done, as in SVr4 [4mcurses[24m, to increase performance.  For testing purposes, both of  [4mncurses[24m  and
+       of  certain  applications,  this feature was made optional.  Setting this variable disabled output
+       buffering, leaving the output stream in the original (usually line-buffered) mode.
+
+       Nowadays, [4mncurses[24m performs its own buffering and does not require this  workaround;  it  does  not
+       modify  the  buffering of the standard output stream.  This approach makes signal handling, as for
+       interrupts, more robust.  A drawback is that certain unconventional programs mixed [4mstdio[24m(3)  calls
+       with  [4mncurses[24m  calls  and  (usually)  got the behavior they expected.  This is no longer the case;
+       [4mncurses[24m does not write to the standard output file descriptor through a [4mstdio[24m-buffered stream.
+
+       As a special case, low-level API calls such as [1mputp[22m(3X) still  use  the  standard  output  stream.
+       High-level [4mcurses[24m calls such as [1mprintw[22m(3X) do not.
+
+   [4m[1mNCURSES_NO_UTF8_ACS[0m
+       At  initialization,  [4mncurses[24m  inspects the [4mTERM[24m environment variable for special cases where VT100
+       forms-drawing characters (and the corresponding alternate character set [4mterminfo[24m capabilities) are
+       known to be unsupported by terminal types that otherwise claim VT100 compatibility.  Specifically,
+       when running in a UTF-8 locale, the Linux virtual console device and the GNU [4mscreen[24m(1) program ig‐
+       nore them.  Set this variable to a nonzero value to instruct [4mncurses[24m that the terminal's ACS  sup‐
+       port  is broken; the library then outputs Unicode code points that correspond to the forms-drawing
+       characters.  Set it to zero (or a non-integer) to disable the  special  check  for  terminal  type
+       names  matching “linux” or “screen”, directing [4mncurses[24m to assume that the ACS feature works if the
+       terminal type description advertises it.
+
+       As an alternative to use of this variable, [4mncurses[24m checks for an extended [4mterminfo[24m  numeric  capa‐
+       bility [1mU8 [22mthat can be compiled using “[1mtic -x[22m”.  Examples follow.
+
+          # linux console, if patched to provide working
+          # VT100 shift-in/shift-out, with corresponding font.
+          linux-vt100|linux console with VT100 line-graphics,
+                  U8#0, use=linux,
+
+          # uxterm with vt100Graphics resource set to false
+          xterm-utf8|xterm relying on UTF-8 line-graphics,
+                  U8#1, use=xterm,
+
+       The two-character name “U8” was chosen to permit its use via [4mncurses[24m's [4mtermcap[24m interface.
+
+   [4m[1mNCURSES_TRACE[0m
+       At  initialization,  [4mncurses[24m (in its debugging configuration) checks for this variable's presence.
+       If defined with an integral value, the library calls [1mcurses_trace[22m(3X) with that value as the argu‐
+       ment.
+
+   [4m[1mTERM[0m
+       The [4mTERM[24m variable denotes the terminal type.  Each is distinct, though many are  similar.   It  is
+       commonly  set  by  terminal  emulators  to help applications find a workable terminal description.
+       Some choose a popular approximation such as “ansi”, “vt100”, or “xterm” rather than an  exact  fit
+       to  their  capabilities.   Not infrequently, an application will have problems with that approach;
+       for example, a key stroke may not operate correctly, or produce  no  effect  but  seeming  garbage
+       characters on the screen.
+
+       Setting [4mTERM[24m has no effect on hardware operation; it affects the way applications communicate with
+       the  terminal.   Likewise, as a general rule ([4mxterm[24m(1) being a rare exception), terminal emulators
+       that allow you to specify [4mTERM[24m as a parameter or configuration value do not change their  behavior
+       to match that setting.
+
+   [4m[1mTERMCAP[0m
+       If  [4mncurses[24m is configured with [4mtermcap[24m support, it checks for a terminal type description in [4mterm‐[0m
+       [4mcap[24m format if one in [4mterminfo[24m format is not available.  Setting this variable directs  [4mncurses[24m  to
+       ignore the usual [4mtermcap[24m database location, [4m/etc/termcap[24m; see [4mTERMPATH[24m below.  [4mTERMCAP[24m should con‐
+       tain  either  a terminal description (with newlines stripped out), or a file name indicating where
+       the information required by the [4mTERM[24m environment variable is stored.
+
+   [4m[1mTERMINFO[0m
+       [4mncurses[24m can be configured to read terminal type description databases in various  locations  using
+       different formats.  This variable overrides the default location.
+
+       •   Descriptions  in  [4mterminfo[24m format are normally stored in a directory tree using subdirectories
+           named by the common first letters of the terminal types named therein.   This  is  the  scheme
+           used in System V.
+
+       •   If [4mncurses[24m is configured to use hashed databases, then [4mTERMINFO[24m may name its location, such as
+           [4m/usr/share/terminfo.db[24m, rather than [4m/usr/share/terminfo/[24m.
+
+       The hashed database uses less disk space and is a little faster than the directory tree.  However,
+       some applications assume the existence of the directory tree, and read it directly rather than us‐
+       ing the [4mterminfo[24m API.
+
+       •   If  [4mncurses[24m  is  configured  with [4mtermcap[24m support, this variable may contain the location of a
+           [4mtermcap[24m file.
+
+       •   If the value of [4mTERMINFO[24m begins with “hex:” or “b64:”, [4mncurses[24m uses the remainder of the value
+           as a compiled [4mterminfo[24m description.  You might produce the base64 format using [1minfocmp[22m(1M).
+
+                  TERMINFO=$(infocmp -0 -Q2 -q)
+                  export TERMINFO
+
+           The compiled description is used only if it corresponds to the  terminal  type  identified  by
+           [4mTERM[24m.
+
+       Setting  [4mTERMINFO[24m is the simplest, but not the only, way to direct [4mncurses[24m to a terminal database.
+       The search path is as follows.
+
+       •   the last terminal database to which the running [4mncurses[24m application wrote, if any
+
+       •   the location specified by the [4mTERMINFO[24m environment variable
+
+       •   [4m$HOME/.terminfo[0m
+
+       •   locations listed in the [4mTERMINFO_DIRS[24m environment variable
+
+       •   location(s) configured and compiled into [4mncurses[0m
+
+          •   [4m/usr/share/terminfo[0m
+
+   [4m[1mTERMINFO_DIRS[0m
+       This variable specifies a list of locations, akin to [4mPATH[24m, in which [4mncurses[24m searches for the  ter‐
+       minal  type  descriptions  described by [4mTERMINFO[24m above.  The list items are separated by colons on
+       Unix and semicolons on OS/2 EMX.  System V [4mterminfo[24m lacks a corresponding  feature;  [4mTERMINFO_DIRS[0m
+       is an [4mncurses[24m extension.
+
+   [4m[1mTERMPATH[0m
+       If  [4mTERMCAP[24m  does  not hold a terminal type description or file name, then [4mncurses[24m checks the con‐
+       tents of [4mTERMPATH[24m, a list of locations, akin to [4mPATH[24m, in which it searches  for  [4mtermcap[24m  terminal
+       type descriptions.  The list items are separated by colons on Unix and semicolons on OS/2 EMX.
+
+       If  both  [4mTERMCAP[24m  and [4mTERMPATH[24m are unset or invalid, [4mncurses[24m searches for the files [4m/etc/termcap[24m,
+       [4m/usr/share/misc/termcap[24m, and [4m$HOME/.termcap[24m, in that order.
+
+[1mALTERNATE CONFIGURATIONS[0m
+       Many different [4mncurses[24m configurations are  possible,  determined  by  the  options  given  to  the
+       [4mconfigure[24m  script when building the library.  Run the script with the [1m--help [22moption to peruse them
+       all.  A few are of particular significance to the application developer employing [4mncurses[24m.
+
+       [1m--disable-overwrite[0m
+            The standard include for [4mncurses[24m is as noted in [1mSYNOPSIS[22m:
+
+                [1m#include <curses.h>[0m
+
+            This option is used to avoid filename conflicts when [4mncurses[24m is not the  main  implementation
+            of  curses of the computer.  If [4mncurses[24m is installed disabling overwrite, it puts its headers
+            in a subdirectory, e.g.,
+
+                [1m#include <ncurses/curses.h>[0m
+
+            It also omits a symbolic link which would allow you to use [1m-lcurses [22mto build executables.
+
+       [1m--enable-widec[0m
+            The configure script renames the library and (if the [1m--disable-overwrite [22moption is used) puts
+            the header files in a different subdirectory.  All of the library names have a  “w”  appended
+            to them, i.e., instead of
+
+                [1m-lncurses[0m
+
+            you link with
+
+                [1m-lncursesw[0m
+
+            You  must  also  enable the wide-character features in the header file when compiling for the
+            wide-character library to use the extended (wide-character) functions.  The symbol which  en‐
+            ables these features has changed since X/Open Curses, Issue 4:
+
+            •   Originally,  the  wide-character  feature  required the symbol [1m_XOPEN_SOURCE_EXTENDED [22mbut
+                that was only valid for XPG4 (1996).
+
+            •   Later, that was deemed conflicting with [1m_XOPEN_SOURCE [22mdefined to 500.
+
+            •   As of mid-2018, none of the features in this implementation require a [1m_XOPEN_SOURCE  [22mfea‐
+                ture  greater than 600.  However, X/Open Curses, Issue 7 (2009) recommends defining it to
+                700.
+
+            •   Alternatively, you can enable the feature by defining [1mNCURSES_WIDECHAR  [22mwith  the  caveat
+                that  some other header file than [1mcurses.h [22mmay require a specific value for [1m_XOPEN_SOURCE[0m
+                (or a system-specific symbol).
+
+            The [4mcurses.h[24m header file installed for the wide-character library is designed to be  compati‐
+            ble  with  the non-wide library's header.  Only the size of the [4mWINDOW[24m structure differs; few
+            applications require more than pointers to [4mWINDOW[24ms.
+
+            If the headers are installed allowing overwrite, the wide-character library's headers  should
+            be  installed  last, to allow applications to be built using either library from the same set
+            of headers.
+
+       [1m--with-pthread[0m
+            The configure script renames the library.  All of the library names have a  “t”  appended  to
+            them (before any “w” added by [1m--enable-widec[22m).
+
+            The  global variables such as [1mLINES [22mare replaced by macros to allow read-only access.  At the
+            same time, setter-functions are provided to set these values.  Some applications  (very  few)
+            may require changes to work with this convention.
+
+       [1m--with-shared[0m
+       [1m--with-normal[0m
+       [1m--with-debug[0m
+       [1m--with-profile[0m
+            The  shared  and  normal (static) library names differ by their suffixes, e.g., [1mlibncurses.so[0m
+            and [1mlibncurses.a[22m.  The debug and profiling libraries add a “_g” and a “_p” to the root  names
+            respectively, e.g., [1mlibncurses_g.a [22mand [1mlibncurses_p.a[22m.
+
+       [1m--with-termlib[0m
+            Low-level  functions  which  do not depend upon whether the library supports wide-characters,
+            are provided in the tinfo library.
+
+            By doing this, it is possible to share the tinfo library between  wide/normal  configurations
+            as well as reduce the size of the library when only low-level functions are needed.
+
+            Those functions are described in these pages:
+
+            •   [1mcurs_extend[22m(3X) - miscellaneous [4mcurses[24m extensions
+
+            •   [1mcurs_inopts[22m(3X) - [4mcurses[24m input options
+
+            •   [1mcurs_kernel[22m(3X) - low-level [4mcurses[24m routines
+
+            •   [1mcurs_termattrs[22m(3X) - [4mcurses[24m environment query routines
+
+            •   [1mcurs_termcap[22m(3X) - [4mcurses[24m emulation of [4mtermcap[0m
+
+            •   [1mcurs_terminfo[22m(3X) - [4mcurses[24m interface to [4mterminfo[24m database
+
+            •   [1mcurs_util[22m(3X) - miscellaneous [4mcurses[24m utility routines
+
+       [1m--with-trace[0m
+            The  [1mtrace [22mfunction normally resides in the debug library, but it is sometimes useful to con‐
+            figure this in the shared library.  Configure scripts should check for the  function's  exis‐
+            tence rather than assuming it is always in the debug library.
+
+[1mFILES[0m
+       [4m/usr/share/tabset[0m
+              tab stop initialization database
+
+       [4m/usr/share/terminfo[0m
+              compiled terminal capability database
+
+[1mNOTES[0m
+       X/Open Curses permits most functions it specifies to be made available as macros as well.  [4mncurses[0m
+       does so
+
+       •   for functions that return values via their parameters,
+
+       •   to support obsolete features,
+
+       •   to reuse functions (for example, those that move the cursor before another operation), and
+
+       •   a few special cases.
+
+       If  the  standard  output file descriptor of an [4mncurses[24m program is redirected to something that is
+       not a terminal device, the library writes screen updates to the standard  error  file  descriptor.
+       This was an undocumented feature of SVr3 [4mcurses[24m.
+
+       See subsection “Header Files” below regarding symbols exposed by inclusion of [4mcurses.h[24m.
+
+[1mEXTENSIONS[0m
+       [4mncurses[24m  enables  an application to capture mouse events on certain terminals, including [4mxterm[24m(1);
+       see [1mcurs_mouse[22m(3X).
+
+       [4mncurses[24m provides a means of responding to window resizing events, as when running in a GUI  termi‐
+       nal emulator application such as [4mxterm[24m; see [1mresizeterm[22m(3X) and [1mwresize[22m(3X).
+
+       [4mncurses[24m  allows an application to query the terminal for the presence of a wide variety of special
+       keys; see [1mhas_key[22m(3X).
+
+       [4mncurses[24m extends the fixed set of function key capabilities specified by X/Open Curses by  allowing
+       the  application  programmer  to  define  additional  key  events  at runtime; see [1mdefine_key[22m(3X),
+       [1mkey_defined[22m(3X), [1mkeybound[22m(3X), and [1mkeyok[22m(3X).
+
+       [4mncurses[24m can exploit the capabilities of terminals implementing ISO 6429/ECMA-48 SGR 39 and  SGR 49
+       sequences,  which  allow an application to reset the terminal to its original foreground and back‐
+       ground colors.  From a user's perspective, the application is able to draw colored text on a back‐
+       ground whose color is set independently, providing  better  control  over  color  contrasts.   See
+       [1mdefault_colors[22m(3X).
+
+       An  [4mncurses[24m application can eschew knowledge of [4mWINDOW[24m structure internals, instead using accessor
+       functions such as [1mis_scrollok[22m(3X).
+
+       [4mncurses[24m enables an application to direct application output to a printer attached to the  terminal
+       device; see [1mcurs_print[22m(3X).
+
+       [4mncurses[24m  offers  [1mslk_attr[22m(3X)  as  a  counterpart  of  [1mattr_get[22m(3X)  for soft-label key lines, and
+       [1mextended_slk_color[22m(3X) as a form of [1mslk_color[22m(3X) that can gather color information from them when
+       many colors are supported.
+
+       Some extensions are available only if [4mncurses[24m permits modification of [1munctrl[22m(3X)'s  behavior;  see
+       [1muse_legacy_coding[22m(3X).   [4mncurses[24m  is  compiled to support them; section “ALTERNATE CONFIGURATIONS”
+       describes how.
+
+       •   Rudimentary support for multi-threaded applications may be available; see [1mcurs_threads[22m(3X).
+
+       •   Functions that ease the management of multiple screens can be exposed; see [1mcurs_sp_funcs[22m(3X).
+
+       •   To aid applications to debug their memory usage, [4mncurses[24m optionally offers functions  to  more
+           aggressively free memory it dynamically allocates itself; see [1mcurs_memleaks[22m(3X).
+
+       •   The library facilitates auditing and troubleshooting of its behavior; see [1mcurs_trace[22m(3X).
+
+       •   The  compiler  option  [1m-DUSE_GETCAP [22mcauses the library to fall back to reading [4m/etc/termcap[24m if
+           the terminal setup code cannot find a [4mterminfo[24m entry corresponding to [4mTERM[24m.  Use of this  fea‐
+           ture  is not recommended, as it essentially includes an entire [4mtermcap[24m compiler in the [4mncurses[0m
+           startup code, at a cost in memory usage and application launch latency.
+
+       [4mPDCurses[24m and NetBSD [4mcurses[24m incorporate some [4mncurses[24m extensions.   Individual  man  pages  indicate
+       where this is the case.
+
+[1mPORTABILITY[0m
+       X/Open  Curses defines two levels of conformance, “base” and “enhanced”.  The latter includes sev‐
+       eral additional features, such as wide-character and color support.   [4mncurses[24m  intends  base-level
+       conformance  with  X/Open Curses, and supports all features of its enhanced level except the [1muntic[0m
+       utility.
+
+       Differences between X/Open Curses and [4mncurses[24m are documented in the “PORTABILITY” sections of  ap‐
+       plicable man pages.
+
+   [1mError Checking[0m
+       In many cases, X/Open Curses is vague about error conditions, omitting some of the SVr4 documenta‐
+       tion.
+
+       Unlike  other  implementations,  [4mncurses[24m checks pointer parameters, such as those to [4mWINDOW[24m struc‐
+       tures, to ensure that they are not null.  This is done primarily to guard against  programmer  er‐
+       ror.   The  standard interface does not provide a way for the library to tell an application which
+       of several possible errors occurred.  Relying on this (or some other) extension adversely  affects
+       the portability of [4mcurses[24m applications.
+
+   [1mPadding Differences[0m
+       In historical [4mcurses[24m implementations, delays embedded in the [4mterminfo[24m capabilities [1mcarriage_return[0m
+       ([1mcr[22m), [1mscroll_forward [22m([1mind[22m), [1mcursor_left [22m([1mcub1[22m), [1mform_feed [22m([1mff[22m), and [1mtab [22m([1mht[22m) activated correspond‐
+       ing  delay bits in the Unix terminal driver.  [4mncurses[24m performs all padding by sending NUL bytes to
+       the device.  This method is slightly more expensive, but narrows the interface to the Unix  kernel
+       significantly and correspondingly increases the package's portability.
+
+   [1mHeader Files[0m
+       The header file [4mcurses.h[24m itself includes the header files [4mstdio.h[24m and [4munctrl.h[24m.
+
+       X/Open Curses has more to say,
+
+           The  inclusion  of  [4mcurses.h[24m  may  make  visible all symbols from the headers [4mstdio.h[24m, [4mterm.h[24m,
+           [4mtermios.h[24m, and [4mwchar.h[24m.
+
+       but does not finish the story.  A more complete account follows.
+
+       •   Starting with 4BSD [4mcurses[24m (1980) all implementations have provided a [4mcurses.h[24m file.
+
+           BSD [4mcurses[24m code included [4mcurses.h[24m and [4munctrl.h[24m from an internal header file [4mcurses.ext[24m,  where
+           “ext” abbreviated “externs”.
+
+           The  implementations  of [4mprintw[24m and [4mscanw[24m used undocumented internal functions of the standard
+           I/O library ([4m_doprnt[24m and [4m_doscan[24m), but nothing in [4mcurses.h[24m itself relied upon [4mstdio.h[24m.
+
+       •   SVr2 [4mcurses[24m added [4mnewterm[24m, which relies upon [4mstdio.h[24m because its  function  prototype  employs
+           the [4mFILE[24m type.
+
+           SVr4 [4mcurses[24m added [4mputwin[24m and [4mgetwin[24m, which also use [4mstdio.h[24m.
+
+           X/Open Curses specifies all three of these functions.
+
+           SVr4 [4mcurses[24m and X/Open Curses do not require the developer to include [4mstdio.h[24m before [4mcurses.h[24m.
+           Both document use of [4mcurses[24m as requiring only [4mcurses.h[24m.
+
+           As a result, standard [4mcurses.h[24m always includes [4mstdio.h[24m.
+
+       •   X/Open Curses and SVr4 [4mcurses[24m are inconsistent with respect to [4munctrl.h[24m.
+
+           As noted in [1mcurs_util[22m(3X), [4mncurses[24m includes [4munctrl.h[24m from [4mcurses.h[24m (as SVr4 does).
+
+       •   X/Open Curses's comments about [4mterm.h[24m and [4mtermios.h[24m may refer to HP-UX and AIX.
+
+           HP-UX  [4mcurses[24m  includes [4mterm.h[24m from [4mcurses.h[24m to declare [4msetupterm[24m in [4mcurses.h[24m, but [4mncurses[24m and
+           Solaris [4mcurses[24m do not.
+
+           AIX [4mcurses[24m includes [4mterm.h[24m and termios.h[4m.[24m  Again, [4mncurses[24m and Solaris [4mcurses[24m do not.
+
+       •   X/Open Curses says that [4mcurses.h[24m [1mmay [22minclude [4mterm.h[24m, but does not require it to do so.
+
+           Some programs use functions declared in both [4mcurses.h[24m and [4mterm.h[24m, and must include both header
+           files in the same module.  Very old versions of AIX [4mcurses[24m required inclusion of [4mcurses.h[24m  be‐
+           fore [4mterm.h[24m.
+
+           The header files supplied by [4mncurses[24m include the standard library headers required for its de‐
+           clarations,  so [4mncurses[24m's own header files can be included in any order.  But for portability,
+           you should include [4mcurses.h[24m before [4mterm.h[24m.
+
+       •   X/Open Curses says “may make visible” because including a header  file  does  not  necessarily
+           make visible all of the symbols in it (consider [1m#ifdef [22mand similar).
+
+           For  instance,  [4mncurses[24m's [4mcurses.h[24m [1mmay [22minclude [4mwchar.h[24m if the proper symbol is defined, and if
+           [4mncurses[24m is configured for wide-character support.  If [4mwchar.h[24m is included, its symbols [1mmay  [22mbe
+           made visible depending on the value of the [1m_XOPEN_SOURCE [22mfeature test macro.
+
+       •   X/Open  Curses  mandates an application's inclusion of one standard C library header in a spe‐
+           cial case: [4mstdarg.h[24m before [4mcurses.h[24m to prototype the functions [4mvw_printw[24m and [4mvw_scanw[24m (as well
+           as the obsolete [4mvwprintw[24m and [4mvwscanw[24m).  Each of  these  takes  a  variadic  argument  list,  a
+           [4mva_list[24m parameter, like that of [4mprintf[24m(3).
+
+           SVr3  [4mcurses[24m introduced the two obsolete functions, and X/Open Curses the others.  In between,
+           SVr4 [4mcurses[24m provided for the possibility that an application might include either [4mvarargs.h[24m or
+           [4mstdarg.h[24m.  These represented contrasting approaches to handling variadic argument lists.   The
+           older  interface, [4mvarargs.h[24m, used a pointer to [4mchar[24m for variadic functions' [4mva_list[24m parameter.
+           Later, the list acquired its own standard data type, [4mva_list[24m, defined in [4mstdarg.h[24m,  empowering
+           the compiler to check the types of a function call's actual parameters against the formal ones
+           declared in its prototype.
+
+           No  conforming implementations of X/Open Curses require an application to include [4mstdarg.h[24m be‐
+           fore [4mcurses.h[24m because they either have allowed for a special type, or, like [4mncurses[24m, they  in‐
+           clude [4mstdarg.h[24m themselves to provide a portable interface.
+
+[1mAUTHORS[0m
+       Zeyd M. Ben-Halim, Eric S. Raymond, Thomas E. Dickey.  Based on [4mpcurses[24m by Pavel Curtis.
+
+[1mSEE ALSO[0m
+       [1mcurs_variables[22m(3X), [1mterminfo[22m(5), [1muser_caps[22m(5)
+
+ncurses 6.5                                     2024-04-27                                    [4mncurses[24m(3X)
