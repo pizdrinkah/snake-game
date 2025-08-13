@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/run/mount/big-drive/programming-stuff/cpp-stuff/snake-game/build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

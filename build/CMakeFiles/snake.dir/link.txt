@@ -1,1 +1,0 @@
-/usr/bin/c++ -g -Wl,--dependency-file=CMakeFiles/snake.dir/link.d CMakeFiles/snake.dir/src/main.cpp.o -o snake  -lncurses libinterface.a
