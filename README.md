@@ -4,6 +4,10 @@ COMPATIBLE WITH:
 Linux
 Might also compile on Mac and BSD (since they're ompatible with ncurses, so it should* compile in theory)
 
-**v1.1: The Graphics Update mk.1**
+**V1.1.0: The Graphics Update mk.1**
 - Added an outer barrier to the game-area
 - Centered the game window
+
+**V1.1.1: Patches and maintainence**
+- Fixed .gitignore
+- fixed an issue where the program would crash due to not checking if argc was less than 2
