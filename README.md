@@ -4,7 +4,7 @@ COMPATIBLE WITH:
 Linux
 Might also compile on Mac and BSD (since they're ompatible with ncurses, so it should* compile in theory)
 
-**V1.1.0: The Graphics Update mk.1**
+**V1.1.0: The Graphics Update**
 - Added an outer barrier to the game-area
 - Centered the game window
 
