@@ -2,7 +2,7 @@ Very fake, and possibly also gay snake game that I made in about 6 or so hours i
 
 COMPATIBLE WITH:
 Linux
-I see no reason it wouldn't compile on Mac and BSD, but you might have to change some
+Might also compile on Mac and BSD (since they're ompatible with ncurses, so it should* compile in theory)
 
 **v1.1: The Graphics Update mk.1**
 - Added an outer barrier to the game-area
