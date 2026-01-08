@@ -14,6 +14,11 @@ int main(int argc, char* argv[]) {
   int height;
   
   int wait;
+
+  if (argc < 2) {
+    println("ERR: no difficulty value provided: 'h' for options");
+    exit(-1);
+  }
   
   switch (argv[1][0]) {
     default:
@@ -41,12 +46,12 @@ int main(int argc, char* argv[]) {
     break;
 
     case 'h':
-      println("snake [SPEED]");
-      println("s: slow");
-      println("m: medium");
-      println("f: fast");
-      println("e: extreme");
-      println("z: zero-time (no wait between frames)");
+      println("Usage: snake [SPEED]");
+      println("  s: slow");
+      println("  m: medium");
+      println("  f: fast");
+      println("  e: extreme");
+      println("  z: zero-time (no wait between frames)");
     return 0;
   }
   
